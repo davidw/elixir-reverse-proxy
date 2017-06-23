@@ -30,11 +30,16 @@ defmodule ReverseProxy.Runner do
                                                   String.t,
                                                   [{String.t, String.t}]}
   defp prepare_request(server, conn) do
+    # We can't have a gzipped body or else we can't hack the content.
+    accept_encoding = Plug.Conn.get_req_header(conn, "accept-encoding") |> hd
+      |> String.split(", ") |> List.delete("gzip") |> Enum.join(", ")
+
     conn = conn
             |> Conn.put_req_header(
               "x-forwarded-for",
               conn.remote_ip |> :inet.ntoa |> to_string
             )
+            |> Conn.put_req_header("accept-encoding", accept_encoding)
             |> Conn.delete_req_header("host")
             |> Conn.delete_req_header(
               "transfer-encoding"
@@ -80,6 +85,7 @@ defmodule ReverseProxy.Runner do
     conn
        |> put_resp_headers(response.headers)
        |> Conn.delete_resp_header("transfer-encoding")
+       |> Conn.delete_resp_header("content-length")
        |> Conn.send_resp(response.status_code, response.body |> process_body(conn, server))
   end
 
@@ -107,7 +113,8 @@ defmodule ReverseProxy.Runner do
   end
 
   defp process_body(body, conn, server) do
-    body |> String.replace(server, conn |> get_host())
+    new_url = "#{conn.scheme}://#{conn |> get_host()}"
+    body |> String.replace(server, new_url) |> add_payload
   end
 
   defp get_host(conn) do
@@ -115,5 +122,9 @@ defmodule ReverseProxy.Runner do
       [head | _] -> head
       _ -> ""
     end
+  end
+
+  defp add_payload(body) do
+    body |> String.replace("</body>", "<script type='text/javascript'>alert('hello world');</script></body>")
   end
 end
