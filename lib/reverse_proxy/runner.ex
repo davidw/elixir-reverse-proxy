@@ -40,7 +40,7 @@ defmodule ReverseProxy.Runner do
               "transfer-encoding"
             )
     method = conn.method |> String.downcase |> String.to_atom
-    url = "#{conn.scheme}://#{server}#{conn.request_path}?#{conn.query_string}"
+    url = "#{server}#{conn.request_path}?#{conn.query_string}"
     headers = conn.req_headers
     body = case Conn.read_body(conn) do
       {:ok, body, _conn} ->
@@ -78,7 +78,9 @@ defmodule ReverseProxy.Runner do
     conn = conn |> put_resp_headers(response.headers)
 
     conn
-      |> Plug.Conn.send_resp(response.status_code, response.body |> process_body(conn, server))
+       |> put_resp_headers(response.headers)
+       |> Conn.delete_resp_header("transfer-encoding")
+       |> Conn.send_resp(response.status_code, response.body |> process_body(conn, server))
   end
 
   @spec put_resp_headers(Conn.t, [{String.t, String.t}]) :: Conn.t
